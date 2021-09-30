@@ -1,0 +1,188 @@
+#define F_CPU 16000000UL
+#define BAUD_RATE 9600
+#define BAUD_PRESCALER (((F_CPU / (BAUD_RATE * 16UL))) - 1)
+
+/*--------------------Libraries---------------------------*/
+#include <stdlib.h>
+#include <stdio.h>
+#include <avr/io.h>
+#include <util/delay.h>
+#include <avr/interrupt.h>
+#include <string.h>
+
+#include "uart.h"
+
+/*--------------------Variables---------------------------*/
+char String[25];
+
+
+volatile int edge = 0;
+volatile int period = 0;
+int a = 0;
+int count = 0;
+int i = 0;
+
+
+char morse[36][25] = 
+{
+	".-",
+	"-...",
+	"-.-.",
+	"-..",
+	".",
+	"..-.",
+	"--.",
+	"....",
+	"..",
+	".---",
+	"-.-",
+	".-..",
+	"--",
+	"-.",
+	"---",
+	".--.",
+	"--.-",
+	".-.",
+	"...",
+	"-",
+	"..-",
+	"...-",
+	".--",
+	"-..-",
+	"-.--",
+	"--.."
+	};
+	
+	
+char alphabet[36][25] = 
+{
+	"A",
+	"B",
+	"C",
+	"D",
+	"E",
+	"F",
+	"G",
+	"H",
+	"I",
+	"J",
+	"K",
+	"L",
+	"M",
+	"N",
+	"0",
+	"P",
+	"Q",
+	"R",
+	"S",
+	"T",
+	"U",
+	"V",
+	"W",
+	"X",
+	"Y",
+	"Z",
+	"1",
+	"2",
+	"3",
+	"4",
+	"5",
+	"6",
+	"7",
+	"8",
+	"9",
+	"0"
+	};
+
+void Initialize()
+{
+	//Disable global interrupts
+	cli();
+	
+	//Set PB0(ICP1 pin) to be input
+	DDRB &= ~(1<<DDB0);
+	DDRB |= (1<<DDB1);
+	DDRB |= (1<<DDB2);
+	
+	TCCR1B |= (1<<CS10);
+	TCCR1B &= ~(1<<CS11);
+	TCCR1B |= (1<<CS12);
+	
+	TCCR1A &= ~(1<<WGM10);
+	TCCR1A &= ~(1<<WGM11);
+	TCCR1B &= ~(1<<WGM12);
+	TCCR1B &= ~(1<<WGM13);
+	
+	TCCR1B |= (1<<ICES1);
+	
+	TIFR1 |= (1<<ICF1);
+	
+	TIMSK1 |= (1<<ICIE1);
+	
+	sei();
+	
+}
+
+
+ISR(TIMER1_CAPT_vect)
+{
+	period = ICR1 + count * 65536 - edge;  
+	edge = ICR1;
+	TCCR1B ^= (1<<ICES1);
+	if(a)
+	{
+		if(period >= 469 && period <= 3125) // 16M /1024 *30m = 469  16M /1024 * 200m = 3125
+		{
+			strcat(String,".");
+			//sprintf(String,".\n");
+			UART_putstring(".");
+			PORTB |= (1<<PORTB1);
+			_delay_ms(50);
+			PORTB &= ~(1<<PORTB1);
+			
+		}
+		else if(period >= 3125 && period <= 6250)
+		{
+			strcat(String,"-");
+			//sprintf(String,"-\n");
+			UART_putstring("-");
+			PORTB |= (1<<PORTB2);
+			_delay_ms(50);
+			PORTB &= ~(1<<PORTB2);
+		}
+		a = 0;
+	}
+	
+	else
+	{
+		if(period >= 6250)
+		{
+			UART_putstring("space\n");
+			UART_putstring(alphabet[0]);
+			for(i = 0; i < 36; i++)
+			{
+				if(strcmp(String, morse[i]) == 0)
+				{
+					UART_putstring(alphabet[0]);
+				}
+			}
+			strcpy(String,"");
+		}
+		a = 1;
+	}
+	
+	
+}
+
+ISR(TIMER1_OVF_vect)
+{
+	count ++;
+}
+
+
+int main(void)
+{
+	Initialize();
+	UART_init(BAUD_PRESCALER);
+	while (1);
+}
